@@ -4,10 +4,9 @@ from pawpal_system import Owner, Pet, FeedingTask, WalkTask, MedicationTask, App
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 st.title("🐾 PawPal+")
+st.caption("A smart pet care planning assistant.")
 
 # --- Session state setup ---
-# Streamlit reruns top to bottom on every interaction.
-# We store Owner in session_state so it persists across reruns.
 if "owner" not in st.session_state:
     st.session_state.owner = None
 
@@ -25,7 +24,7 @@ if st.button("Save owner & pet"):
     owner = Owner(name=owner_name, email=owner_email)
     owner.add_pet(pet)
     st.session_state.owner = owner
-    st.success(f"Saved! Owner: {owner_name}, Pet: {pet_name} ({species})")
+    st.success(f"Saved! Owner: {owner_name} | Pet: {pet_name} ({species}, age {pet_age})")
 
 st.divider()
 
@@ -43,32 +42,41 @@ else:
     with col2:
         duration = st.number_input("Duration (mins)", min_value=1, max_value=240, value=20)
     with col3:
-        priority = st.selectbox("Priority", [1, 2, 3], format_func=lambda x: {1: "low", 2: "medium", 3: "high"}[x])
+        priority = st.selectbox("Priority", [1, 2, 3],
+                                format_func=lambda x: {1: "low", 2: "medium", 3: "high"}[x])
 
-    deadline_hour = st.slider("Deadline hour", min_value=0, max_value=23, value=8)
-    task_type = st.selectbox("Task type", ["Feeding", "Walk", "Medication", "Appointment"])
+    col4, col5 = st.columns(2)
+    with col4:
+        deadline_hour = st.slider("Deadline hour", min_value=0, max_value=23, value=8)
+    with col5:
+        task_type = st.selectbox("Task type", ["Feeding", "Walk", "Medication", "Appointment"])
+
+    frequency = st.selectbox("Frequency", ["none", "daily", "weekly"])
 
     if st.button("Add task"):
         deadline = time(deadline_hour, 0)
+        freq = None if frequency == "none" else frequency
+
         if task_type == "Feeding":
-            task = FeedingTask(title=task_title, deadline=deadline, priority=priority, duration=duration)
+            task = FeedingTask(title=task_title, deadline=deadline, priority=priority, duration=duration, frequency=freq)
         elif task_type == "Walk":
-            task = WalkTask(title=task_title, deadline=deadline, priority=priority, duration=duration)
+            task = WalkTask(title=task_title, deadline=deadline, priority=priority, duration=duration, frequency=freq)
         elif task_type == "Medication":
-            task = MedicationTask(title=task_title, deadline=deadline, priority=priority, duration=duration)
+            task = MedicationTask(title=task_title, deadline=deadline, priority=priority, duration=duration, frequency=freq)
         else:
-            task = AppointmentTask(title=task_title, deadline=deadline, priority=priority, duration=duration)
+            task = AppointmentTask(title=task_title, deadline=deadline, priority=priority, duration=duration, frequency=freq)
 
         pet.add_task(task)
-        st.success(f"Added task: {task_title}")
+        st.success(f"Task added: {task_title} at {deadline_hour}:00")
 
     if pet.tasks:
         st.write("Current tasks:")
         st.table([{
             "Title": t.title,
             "Deadline": str(t.deadline),
-            "Priority": t.priority,
+            "Priority": {1: "low", 2: "medium", 3: "high"}[t.priority],
             "Duration (mins)": t.duration,
+            "Frequency": t.frequency or "none",
             "Done": t.is_done
         } for t in pet.tasks])
     else:
@@ -86,10 +94,32 @@ if st.button("Generate schedule"):
         st.error("Please add at least one task first.")
     else:
         scheduler = Scheduler(st.session_state.owner)
-        plan = scheduler.generate_plan()
 
-        st.success("Here is today's schedule:")
+        # Conflict detection
+        conflicts = scheduler.detect_conflicts()
+        if conflicts:
+            st.warning("Conflicts detected — two tasks are scheduled at the same time:")
+            for c in conflicts:
+                st.warning(f"⚠️ {c}")
+        else:
+            st.success("No scheduling conflicts detected.")
+
+        # Display sorted schedule
+        st.markdown("### Today's Schedule")
+        plan = scheduler.generate_plan()
         for i, (pet_name, task) in enumerate(plan, 1):
             status = "✅ Done" if task.is_done else "⏳ Pending"
-            st.markdown(f"**{i}. [{task.deadline}] {task.title}** ({pet_name})")
-            st.caption(f"Priority: {task.priority} | Duration: {task.duration} mins | {status}")
+            priority_label = {1: "low", 2: "medium", 3: "high"}[task.priority]
+            with st.container():
+                st.markdown(f"**{i}. [{task.deadline}] {task.title}** ({pet_name})")
+                st.caption(f"Priority: {priority_label} | Duration: {task.duration} mins | Frequency: {task.frequency or 'none'} | {status}")
+                st.divider()
+
+        # Filter: pending only
+        st.markdown("### Pending Tasks Only")
+        pending = scheduler.filter_by_status(done=False)
+        if pending:
+            for pet_name, task in pending:
+                st.markdown(f"- **{task.title}** ({pet_name}) at {task.deadline}")
+        else:
+            st.info("All tasks are complete!")
