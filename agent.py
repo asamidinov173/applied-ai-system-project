@@ -1,8 +1,6 @@
 import json
 import logging
 from datetime import time
-from typing import Any
-import anthropic
 from pawpal_system import Owner, Pet, Task, Scheduler
 
 logging.basicConfig(
@@ -15,7 +13,6 @@ logger = logging.getLogger(__name__)
 class PawPalAgent:
     def __init__(self, owner: Owner):
         self.owner = owner
-        self.client = anthropic.Anthropic()
         self.logs = []
 
     def _log(self, step: str, message: str):
@@ -38,22 +35,21 @@ class PawPalAgent:
         return tasks
 
     def step1_plan(self) -> str:
-        self._log("PLAN", "Asking Claude to analyze tasks...")
+        self._log("PLAN", "Analyzing tasks...")
         tasks = self._get_tasks_summary()
         if not tasks:
             return "No tasks to plan."
-        prompt = f"You are a pet care assistant. Analyze these tasks in 2-3 sentences:\n{json.dumps(tasks, indent=2)}"
-        response = self.client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        plan = response.content[0].text
+        high = [t for t in tasks if t["priority"] == 3]
+        plan = f"Found {len(tasks)} tasks. "
+        if high:
+            plan += f"High priority tasks: {', '.join([t['title'] for t in high])}. These should be scheduled first."
+        else:
+            plan += "All tasks are low to medium priority. Scheduling by earliest deadline."
         self._log("PLAN", f"Done: {plan[:80]}...")
         return plan
 
     def step2_schedule(self) -> list:
-        self._log("SCHEDULE", "Running scheduler...")
+        self._log("SCHEDULE", "Running EDF scheduler...")
         scheduler = Scheduler(self.owner)
         plan = scheduler.generate_plan()
         self._log("SCHEDULE", f"Generated {len(plan)} tasks.")
@@ -72,38 +68,34 @@ class PawPalAgent:
     def step4_fix(self, conflicts: list) -> str:
         if not conflicts:
             self._log("FIX", "No conflicts to fix.")
-            return "No conflicts detected."
-        self._log("FIX", "Asking Claude for fixes...")
-        prompt = f"Fix these pet care scheduling conflicts (1 sentence each):\n{chr(10).join(conflicts)}"
-        response = self.client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        fix = response.content[0].text
-        self._log("FIX", f"Done: {fix[:80]}...")
-        return fix
+            return "No conflicts detected — schedule looks clean!"
+        self._log("FIX", "Generating fixes...")
+        fixes = []
+        for c in conflicts:
+            fixes.append(f"Suggestion: Move one of the conflicting tasks 30 minutes later to avoid overlap.")
+        return "\n".join(fixes)
 
     def step5_explain(self, plan: list, conflicts: list) -> dict:
-        self._log("EXPLAIN", "Asking Claude to explain the schedule...")
-        tasks = self._get_tasks_summary()
-        prompt = f"""Explain this pet care schedule in JSON format:
-Tasks: {json.dumps(tasks, indent=2)}
-Conflicts: {conflicts if conflicts else ["None"]}
-Return only JSON: {{"explanation": "2-3 sentences", "confidence": 8, "suggestion": "one tip"}}"""
-        response = self.client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}]
+        self._log("EXPLAIN", "Generating explanation...")
+        task_count = len(plan)
+        conflict_count = len(conflicts)
+        confidence = 9 if conflict_count == 0 else 7
+        explanation = (
+            f"The schedule contains {task_count} tasks ordered by deadline and priority. "
+            f"{'No conflicts were detected — the schedule is clean.' if conflict_count == 0 else f'{conflict_count} conflict(s) were detected and fixes were suggested.'} "
+            f"High priority tasks are placed first to ensure critical care is not missed."
         )
-        raw = response.content[0].text.strip()
-        try:
-            clean = raw.replace("```json", "").replace("```", "").strip()
-            result = json.loads(clean)
-        except json.JSONDecodeError:
-            result = {"explanation": raw, "confidence": "N/A", "suggestion": "Could not parse response."}
-        self._log("EXPLAIN", f"Confidence: {result.get('confidence')}/10")
-        return result
+        suggestion = (
+            "Consider spreading tasks evenly across the day to avoid fatigue."
+            if task_count > 3
+            else "Add more tasks to build a complete daily routine."
+        )
+        self._log("EXPLAIN", f"Confidence: {confidence}/10")
+        return {
+            "explanation": explanation,
+            "confidence": confidence,
+            "suggestion": suggestion
+        }
 
     def run(self) -> dict:
         self._log("START", f"Agent starting for owner: {self.owner.name}")
@@ -112,7 +104,9 @@ Return only JSON: {{"explanation": "2-3 sentences", "confidence": 8, "suggestion
         results["schedule"] = self.step2_schedule()
         results["conflicts"] = self.step3_check()
         results["fixes"] = self.step4_fix(results["conflicts"])
-        results["explanation"] = self.step5_explain(results["schedule"], results["conflicts"])
+        results["explanation"] = self.step5_explain(
+            results["schedule"], results["conflicts"]
+        )
         results["logs"] = self.logs
         self._log("DONE", "Agent completed successfully.")
         return results
