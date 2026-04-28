@@ -87,7 +87,9 @@ if st.session_state.owner:
         st.markdown("**Today's Schedule**")
         for i, task in enumerate(plan, 1):
             if isinstance(task, tuple):
-                st.markdown(f"{i}. {task}")
+                pet_n, t = task
+                status = "✅ Done" if t.is_done else "⏳ Pending"
+                st.markdown(f"{i}. [{t.deadline}] **{t.title}** ({pet_n}) — Priority: {t.priority} | Duration: {t.duration} mins | {status}")
             else:
                 pet_name_display = ""
                 for pet in st.session_state.owner.pets:
@@ -117,7 +119,9 @@ if st.session_state.owner:
                     st.markdown("### Step 2 — Schedule")
                     for i, task in enumerate(results["schedule"], 1):
                         if isinstance(task, tuple):
-                            st.markdown(f"{i}. {task}")
+                            pet_n, t = task
+                            status = "✅ Done" if t.is_done else "⏳ Pending"
+                            st.markdown(f"{i}. [{t.deadline}] **{t.title}** ({pet_n}) — Priority: {t.priority} | Duration: {t.duration} mins | {status}")
                         else:
                             status = "✅ Done" if task.is_done else "⏳ Pending"
                             st.markdown(f"{i}. [{task.deadline}] **{task.title}** — Priority: {task.priority} | {status}")
