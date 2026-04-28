@@ -6,7 +6,6 @@ st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 st.title("🐾 PawPal+")
 st.markdown("A smart pet care planning assistant.")
 
-# --- Session State Setup ---
 if "owner" not in st.session_state:
     st.session_state.owner = None
 if "pet" not in st.session_state:
@@ -14,7 +13,6 @@ if "pet" not in st.session_state:
 if "tasks" not in st.session_state:
     st.session_state.tasks = []
 
-# --- Owner & Pet Info ---
 st.subheader("Owner & Pet Info")
 owner_name = st.text_input("Owner name", value="Alikhan")
 owner_email = st.text_input("Owner email", value="alikhan@email.com")
@@ -31,7 +29,6 @@ if st.button("Save owner & pet"):
     st.session_state.tasks = []
     st.success(f"Saved! Owner: {owner_name}, Pet: {pet_name}")
 
-# --- Add Tasks ---
 if st.session_state.pet:
     st.subheader("Add Tasks")
     col1, col2, col3 = st.columns(3)
@@ -73,7 +70,6 @@ if st.session_state.pet:
         st.write("Current tasks:")
         st.table(st.session_state.tasks)
 
-# --- Build Schedule ---
 if st.session_state.owner:
     st.subheader("Build Schedule")
 
@@ -90,16 +86,18 @@ if st.session_state.owner:
 
         st.markdown("**Today's Schedule**")
         for i, task in enumerate(plan, 1):
-            pet_name_display = ""
-            for pet in st.session_state.owner.pets:
-                if task in pet.tasks:
-                    pet_name_display = pet.name
-            status = "✅ Done" if task.is_done else "⏳ Pending"
-            st.markdown(f"{i}. [{task.deadline}] **{task.title}** ({pet_name_display})  \nPriority: {task.priority} | Duration: {task.duration} mins | {status}")
+            if isinstance(task, tuple):
+                st.markdown(f"{i}. {task}")
+            else:
+                pet_name_display = ""
+                for pet in st.session_state.owner.pets:
+                    if task in pet.tasks:
+                        pet_name_display = pet.name
+                status = "✅ Done" if task.is_done else "⏳ Pending"
+                st.markdown(f"{i}. [{task.deadline}] **{task.title}** ({pet_name_display}) — Priority: {task.priority} | Duration: {task.duration} mins | {status}")
 
     st.divider()
 
-    # --- AI Agent ---
     st.subheader("🤖 Run AI Agent")
     st.caption("The AI agent will plan, schedule, detect conflicts, suggest fixes, and explain the result.")
 
@@ -118,7 +116,11 @@ if st.session_state.owner:
 
                     st.markdown("### Step 2 — Schedule")
                     for i, task in enumerate(results["schedule"], 1):
-                        st.markdown(f"{i}. [{task.deadline}] **{task.title}** — Priority: {task.priority}")
+                        if isinstance(task, tuple):
+                            st.markdown(f"{i}. {task}")
+                        else:
+                            status = "✅ Done" if task.is_done else "⏳ Pending"
+                            st.markdown(f"{i}. [{task.deadline}] **{task.title}** — Priority: {task.priority} | {status}")
 
                     st.markdown("### Step 3 — Conflicts")
                     if results["conflicts"]:
