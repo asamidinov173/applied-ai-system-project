@@ -56,7 +56,7 @@ User Input → Streamlit UI → PawPalAgent → Claude AI API
 Building this taught me that agentic AI systems work best when you combine deterministic logic (the scheduler) with AI reasoning (Claude). The AI does not replace the code — it makes it smarter by explaining and improving it.
 
 ## Demo Walkthrough
-Loom video link: (add after recording)
+Loom video link: https://www.loom.com/share/196508f77d6a46cab17b8744e3d4670e
 
 ## Repository
 https://github.com/asamidinov173/applied-ai-system-project
